@@ -1,0 +1,9 @@
+{
+  "tabs": [
+    { "key": "home", "enabled": true },
+    { "key": "chat", "enabled": true },
+    { "key": "settings", "enabled": true },
+    { "key": "profile", "enabled": true }
+  ]
+}
+

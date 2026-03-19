@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Mobile Template App",
+    "slug": "mobile-template-app",
+    "scheme": "mobile-template",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "assetBundlePatterns": [
+      "assets/**/*"
+    ],
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "package": "com.mobiletemplate.app",
+      "icon": "./assets/icon.png",
+      "permissions": []
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mobiletemplate.app",
+      "buildNumber": "1",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1",
+            "excludeArchitectures": [],
+            "flipper": false
+          }
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "router": {}
+    }
+  }
+}
+

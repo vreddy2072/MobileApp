@@ -1,0 +1,46 @@
+{
+  "cli": {
+    "version": ">= 16.17.4",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_LOG_DEBUG": "true"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_LOG_DEBUG": "true"
+      }
+    },
+    "simulator": {
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_LOG_DEBUG": "true"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": ""
+      }
+    }
+  }
+}
+
