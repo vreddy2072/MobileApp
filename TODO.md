@@ -1,6 +1,6 @@
 # Project Configuration TODO
 
-This file lists all configuration items that need to be updated when creating a new project from MobileTemplate. First, complete the Prerequisites and use the keys/values to fill in this file, use AI IDE like Cursor AI to use this file to update all configuration files in the new project.
+This file lists all configuration items that need to be updated when creating a new project from **MobileApp** (or when cloning this repo as a template). First, complete the Prerequisites and use the keys/values to fill in this file; you can use an AI IDE (e.g. Cursor) to apply the values across config files.
 
 ## Components Setup (Prerequisites)
 
@@ -34,8 +34,10 @@ Before you start developing your app, set up the following external components a
     - `SUPABASE_SERVICE_ROLE_KEY`
     - `JWT_SECRET` (from Project Settings → API → JWT Secret; used to verify Supabase Auth tokens)
     - `OPENAI_API_KEY`
-    - `REVENUECAT_WEBHOOK_SECRET`
+    - `REVENUECAT_WEBHOOK_SECRET` (required for `ai-credit-tokens-from-revenuecat` webhook verification)
+    - **`DEV_MODE`**: set to `true` **only** for dev/preview so `ai-credit-tokens-from-expogo` accepts mock purchases (e.g. Expo Go). Use **`false` or omit in production** so that function rejects all requests.
   - Optional: `SB_JWT_ISSUER` (defaults to `{SUPABASE_URL}/auth/v1` if not set)
+  - Optional: `DEBUG_LOG` — set to `true` on Edge Functions for extra server logs
 
 - **Expo.dev / EAS** (`https://expo.dev/`)
   - Create a new Expo project for your app and copy the **EAS Project ID** (used in `app.config.js`).
@@ -105,18 +107,27 @@ These values can typically be **shared across projects** if using the same backe
 
 ## Supabase Edge Functions
 
-These are the default edge function names. Usually **unchanged** unless you have custom function names:
+These are the default edge function names. Usually **unchanged** unless you have custom function names. Deploy sources from `Supabase/edge-functions/`.
 
-- [ ] **ai-get-balance-function**: `[ai-get-balance-function]` (default, usually unchanged)
-- [ ] **ai-credit-tokens-from-expogo**: `[ai-credit-tokens-from-expogo]` (default, usually unchanged)
-- [ ] **ai-get-iap-products-function**: `[ai-get-iap-products-function]` (default, usually unchanged)
-- [ ] **ai-call-function**: `[ai-call-function]` (default, hard-coded in `src/services/aiService.ts`)
+**Called from the mobile app (authenticated JWT):**
+
+- [ ] **ai-get-balance-function**: wallet balance via RPC `get_user_balance` (default name)
+- [ ] **ai-user-login-function**: upserts `public.users` after sign-in via RPC `upsert_user_login` (used by `src/services/userLoginService.ts`)
+- [ ] **ai-get-iap-products-function**: paywall catalog via RPC `get_iap_products`
+- [ ] **ai-credit-tokens-from-expogo**: mock / Expo Go token credit via RPC `add_tokens` — **only when `DEV_MODE=true`** on the Edge Function environment
+- [ ] **ai-call-function**: OpenAI completion + `deduct_tokens` + `ai_usage_log` (hard-coded in `src/services/aiService.ts`)
+
+**Server / integrations (not invoked directly from purchase UI as primary path):**
+
+- [ ] **ai-credit-tokens-from-revenuecat**: RevenueCat **webhook**; verifies `REVENUECAT_WEBHOOK_SECRET`, calls RPC `add_tokens_rc`. Configure webhook URL in RevenueCat to this function’s deployed URL.
 
 **Files to update (if different from defaults):**
-- `src/services/tokenService.ts` (lines: 82, 188, 274, 475, 487)
-- `src/services/aiService.ts` (line: 54 - `getDefaultFunctionName()` returns hard-coded `'ai-call-function'`)
 
-**Note:** The AI function name is hard-coded in the codebase. No environment variable is needed. If you need to change it, update `src/services/aiService.ts` directly.
+- `src/services/tokenService.ts` — search for `callEdgeFunction(` (defaults: **~56** `ai-get-balance-function`, **~162 / ~247** `ai-credit-tokens-from-expogo`, **~457** `ai-get-iap-products-function`; line numbers may drift)
+- `src/services/userLoginService.ts` — **`ai-user-login-function`** (~line 33)
+- `src/services/aiService.ts` — **`getDefaultFunctionName()`** returns `'ai-call-function'` (currently **~lines 38–39**)
+
+**Note:** The AI function name is hard-coded. No `EXPO_PUBLIC_*` variable is used. To rename it, update `aiService.ts` (and deploy the matching Edge Function name in Supabase).
 
 ## Supabase Database
 
@@ -127,7 +138,10 @@ If this is a new app that needs its own database registration:
 - [ ] **Bundle ID**: `[com.example.app]` (must match `app.config.js` iOS bundle identifier)
 
 **Files to update:**
-- `Supabase/tables/Tables.sql` (line 24: INSERT INTO apps statement)
+
+- `Supabase/tables/Tables.sql` — uncomment and edit the **sample** `insert into public.apps (...)` block (currently commented near the top of the file, e.g. **~lines 24–28**). Set `app_name`, `app_id` (RevenueCat), and `bundle_id` to match `app.config.js` and your stores.
+
+**Also for new apps:** ensure a row exists in **`ai_app_configs`** for your `app_name` (and `mode` if you use multiple modes per app), so `ai-call-function` can load `system_prompt`, model, and limits.
 
 **Note:** If sharing the same Supabase backend and app registration, you can skip this section.
 
@@ -141,6 +155,7 @@ If this is a new app that needs its own database registration:
 - [ ] If using custom Supabase edge function names, update all references in:
   - `src/services/tokenService.ts`
   - `src/services/aiService.ts`
+  - `src/services/userLoginService.ts`
 
 ## Quick Reference: Files That Need Updates
 
@@ -156,13 +171,16 @@ Based on the values above, these files will need to be updated:
    - Package name
 
 3. **src/services/envService.ts**
-   - Default app name fallback (line 22)
+   - Default app name fallback if `expo.name` is missing (`getAppName()` — search for the fallback string)
 
 4. **Supabase/tables/Tables.sql** (if new app registration needed)
-   - App registration INSERT statement
+   - Uncomment and edit `insert into public.apps ...`; add **`ai_app_configs`** data for your app if needed
 
-6. **.env.local** (for Expo Go development)
+5. **.env.local** (for Expo Go development)
    - All environment variables
+
+6. **src/services/** (only if renaming Edge Functions)
+   - `tokenService.ts`, `aiService.ts`, `userLoginService.ts`
 
 ## Notes
 
@@ -175,7 +193,7 @@ Based on the values above, these files will need to be updated:
   - For EAS builds: Set in `eas.json` or via EAS Secrets in Expo dashboard
 
 - **Testing:**
-  - After configuration, test with Expo Go first
+  - After configuration, test with Expo Go first (ensure **`DEV_MODE=true`** on `ai-credit-tokens-from-expogo` if you rely on mock credits)
   - Then test with EAS dev build
-  - Verify all API integrations (Supabase Auth sign-in, RevenueCat purchases, Supabase edge function calls)
+  - Verify all API integrations (Supabase Auth sign-in, `ai-user-login-function`, AI calls via `ai-call-function`, RevenueCat purchases / webhook token credit, other Edge Function calls)
 

@@ -1,12 +1,12 @@
 # Mobile Template App - Expo Foundation Project
 
-A foundation template for building new Expo-based React Native applications. This mobile template includes a complete setup with theme system, navigation, core components, and design system constants.
-
-**✅ Validated**: This template has been successfully validated through NoteBro app development - both iOS builds and App Store submissions work correctly.
+A foundation template for building new Expo-based React Native applications. This mobile template includes a complete setup with theme system, navigation, core components, and design system constants. The template supports Authentication, AI integration and Custom Paywall using Supabase and RevenueCat.
 
 ## Features
 
-- **Supabase Authentication**: Sign in with Apple and Google (OAuth); persisted session and JWT-based API auth
+- **Supabase Authentication (iOS + Google)**: Sign in with **Apple** (native on iOS via `expo-apple-authentication` + Supabase `signInWithIdToken`) and **Google** (OAuth in browser + return via `auth-callback` deep link). Session is persisted; **JWT access tokens** authenticate calls to Supabase Edge Functions.
+- **AI via Supabase Edge Functions**: Per-app prompts and OpenAI completion from **`ai-call-function`**; credit wallet, usage logging, and balance/product endpoints wired to PostgreSQL (see [AI integration](#ai-integration-supabase-edge-functions--database) below).
+- **Custom paywall (RevenueCat + Supabase)**: **`TokenStore`** screen, StoreKit / RevenueCat purchases, optional **RevenueCat webhook** to credit tokens in Postgres, catalog and ledger in **`iap_products`** / **`iap_transactions`**.
 - **Theme System**: Light/dark mode support with customizable theme colors
 - **Navigation**: Bottom tab navigation with stack navigators
 - **Styled Components**: Pre-built styled components (Text, Card, Icon)
@@ -15,42 +15,117 @@ A foundation template for building new Expo-based React Native applications. Thi
 - **NativeWind**: Tailwind CSS for React Native
 - **Mobile Device Wrapper**: Web preview with realistic device frame
 
+## Authentication (Supabase: iOS + Google)
+
+The app uses **Supabase Auth** as the identity provider. Implementations live primarily in `src/screens/SignInScreen.tsx` and `lib/supabase.ts`.
+
+| Provider | Platform | How it works |
+|----------|----------|----------------|
+| **Apple** | iOS | `expo-apple-authentication` obtains an Apple **identity token**; the app calls `supabase.auth.signInWithIdToken({ provider: 'apple', token })`. **Sign in with Apple typically requires an EAS/dev build**—Expo Go uses a different bundle ID and may fail audience checks (the screen surfaces this). |
+| **Google** | iOS / Android / Web | OAuth flow via `expo-web-browser` and a **`auth-callback`** redirect URL; `Linking` handles the return URL and `createSessionFromUrl` exchanges it for a Supabase session. |
+
+**Dashboard setup**: In the Supabase project, enable **Apple** and **Google** under **Authentication → Providers**, and configure redirect URLs to match your app scheme (see `TODO.md` / `app.config.js`).
+
+**Downstream**: After sign-in, the app can record the user for the current **`app_name`** via `ai-user-login-function` (see [Edge functions](#supabase-edge-functions-mobileappsupabaseedge-functions)), which upserts `public.users` (and related RPC as defined in SQL under `Supabase/functions`).
+
+## AI integration (Supabase Edge Functions + database)
+
+### Supabase Edge Functions (`MobileApp/Supabase/edge-functions`)
+
+| Function | Purpose |
+|----------|---------|
+| **`ai-call-function`** | **Main AI call.** Verifies **Supabase JWT** (`requireSupabaseUser`). Requires JSON body: **`prompt`** (string) and **`app_name`** (string). Loads **`ai_app_configs`** for that app: **`system_prompt`**, **`model`**, **`temperature`**, **`max_tokens`**, **`max_input_chars`**, **`is_active`**. Calls OpenAI **chat completions** with **system + user** messages. Enforces max input length and a basic profanity filter. After success, computes usage-based **credit cost**, runs **`deduct_tokens`** RPC, and inserts a row into **`ai_usage_log`**. Returns JSON with `text`, `model`, `tokens_charged`, `usage`. |
+| **`ai-get-balance-function`** | Authenticated POST; reads **`app_name`** from body; RPC **`get_user_balance`** → `{ balance }`. |
+| **`ai-user-login-function`** | Authenticated POST; RPC **`upsert_user_login`** with `user_id` from JWT and **`app_name`** from body. |
+| **`ai-get-iap-products-function`** | Authenticated POST; RPC **`get_iap_products`** for **`app_name`** → `{ products }` for the paywall catalog. |
+| **`ai-credit-tokens-from-expogo`** | **Development only:** gated by **`DEV_MODE=true`** in Edge env. Authenticated; credits wallet via **`add_tokens`** RPC (Expo Go / mock purchases). **Disabled when `DEV_MODE` is not set (e.g. production).** |
+| **`ai-credit-tokens-from-revenuecat`** | **RevenueCat webhook:** validates **`REVENUECAT_WEBHOOK_SECRET`**; parses event; RPC **`add_tokens_rc`** with `p_app_id`, `product_id`, etc. |
+| **`_shared/auth.ts`** | JWT verification for user-scoped functions (HS256 with project **`JWT_SECRET`**, issuer optional **`SB_JWT_ISSUER`**). |
+
+**Client:** `src/services/supabaseApi.ts` attaches **`app_name`** (from `expo.name` via `envService.getAppName()`) and **`x-app-name`** on every Edge Function POST. AI usage from the app goes through `src/services/aiService.ts` (e.g. **`ai-call-function`**).
+
+### Database tables (`MobileApp/Supabase/tables/Tables.sql`)
+
+| Table | Role for AI / app |
+|-------|---------------------|
+| **`apps`** | Registers **`app_name`**, optional **`app_id`** (RevenueCat), **`bundle_id`**. |
+| **`users`** | Per-app user row **`(user_id, app_name)`** (tied to Supabase Auth user id). |
+| **`ai_tokens`** | Credit **wallet**: **`balance`**, **`lifetime_usage`** per **`(user_id, app_name)`**. |
+| **`ai_usage_log`** | One row per AI call: **`model`**, **`input_tokens`**, **`output_tokens`**, **`cost_tokens`**, timestamps. |
+| **`ai_app_configs`** | **Per-app AI behavior**: **`system_prompt`**, **`model`**, **`temperature`**, **`max_tokens`**, **`max_input_chars`**, **`is_active`**, plus **`mode`** (see schema—primary key is **`(app_name, mode)`**; ensure your deployed config and Edge Function query match how you store rows). |
+
+### PostgreSQL functions (`MobileApp/Supabase/functions/*.sql`)
+
+These RPCs are invoked from Edge Functions or (where allowed) the service role client:
+
+- **`get_user_balance`** – Ensures wallet row exists, returns balance.
+- **`deduct_tokens`** – Deducts **`p_cost`** from **`ai_tokens`** (returns boolean / used by **`ai-call-function`** billing).
+- **`upsert_user_login`** – Upserts **`public.users`** (and any schema extensions in the same file, e.g. vocab app tables if present).
+- **`get_iap_products`** – Returns active products for **`p_app_name`** (paywall catalog).
+- **`add_tokens`** – Adds credits from a known **`product_id`**; logs **`iap_transactions`**.
+- **`add_tokens_rc`** – Resolves RevenueCat **`app_id`** → **`app_name`**, then calls **`add_tokens`**.
+- **`check_app_exists`** – Helper to verify an app is registered.
+
+## Paywall and credits (RevenueCat + Supabase)
+
+### App UI
+
+- **`TokenStoreScreen`** (`src/screens/TokenStoreScreen.tsx`): Custom paywall UI (featured pack + other options). Loads products via **`fetchAvailableProducts()`** → **`ai-get-iap-products-function`**. Purchases: **native builds** use **`react-native-purchases`** (RevenueCat); **Expo Go** uses **`ai-credit-tokens-from-expogo`** when **`DEV_MODE=true`** on the Edge Function.
+
+### Database (`Tables.sql` + `Supabase/functions`)
+
+| Table / object | Role |
+|----------------|------|
+| **`iap_products`** | Catalog per **`app_name`**: **`product_id`**, **`display_name`**, **`credits`**, **`price_label`**, **`sort_order`**, **`is_active`**. |
+| **`iap_transactions`** | Ledger: **`user_id`**, **`app_name`**, **`product_id`**, **`quantity`**, **`purchase_source`** (e.g. `ios`, `revenuecat`, mock), **`transaction_id`**, optional receipt/payload. |
+| **`add_tokens` / `add_tokens_rc`** | Server-side credit grant + transaction row (used by webhook and dev mock). |
+
+### RevenueCat webhook
+
+Configure RevenueCat to POST to your deployed **`ai-credit-tokens-from-revenuecat`** URL. Set **`REVENUECAT_WEBHOOK_SECRET`** in Supabase Edge secrets; the function validates the secret and calls **`add_tokens_rc`** with **`event.app_user_id`**, **`event.app_id`**, **`event.product_id`**, etc.
+
+**Also set** `EXPO_PUBLIC_REVENUECAT_IOS_KEY` / Android key (see `TODO.md` and `app.config.js`).
+
 ## Project Structure
 
 ```
-MobileTemplate/
+MobileApp/
 ├── App.tsx                 # Main app component
 ├── index.ts                # Entry point
 ├── package.json            # Dependencies
-├── app.json                # Expo configuration
+├── app.config.js           # Expo configuration (name, extras, env)
 ├── eas.json                # EAS Build configuration
+├── Supabase/
+│   ├── edge-functions/     # Deno Edge Function sources (deploy to Supabase)
+│   ├── functions/         # PostgreSQL function definitions (.sql)
+│   └── tables/
+│       └── Tables.sql       # Core schema: apps, users, ai_tokens, ai_usage_log,
+│                            # iap_*, ai_app_configs
 ├── src/
 │   ├── contexts/
-│   │   └── ThemeContext.tsx    # Theme provider and context
+│   │   ├── ThemeContext.tsx
+│   │   └── AuthContext.tsx
 │   ├── hooks/
-│   │   └── useThemedStyles.ts  # Hook for theme-aware styles
-│   ├── utils/
-│   │   ├── cn.ts               # Class name utility
-│   │   └── theme.ts            # Theme utilities
-│   ├── constants/
-│   │   └── designSystem.ts     # Design system constants
+│   │   ├── useThemedStyles.ts
+│   │   └── useTokens.ts
+│   ├── lib/
+│   │   └── supabase.ts     # Supabase client + session helpers
 │   ├── navigation/
-│   │   └── AppNavigator.tsx    # Navigation setup
+│   │   └── AppNavigator.tsx
 │   ├── services/
-│   │   └── NavigationService.ts # Navigation service
+│   │   ├── aiService.ts
+│   │   ├── supabaseApi.ts  # Edge Function HTTP client + app_name header
+│   │   ├── tokenService.ts
+│   │   ├── revenueCatService.ts
+│   │   └── userLoginService.ts
 │   ├── components/
-│   │   ├── MobileDeviceWrapper.tsx  # Web device frame
-│   │   ├── LargeTitleHeader.tsx     # Header component
-│   │   └── styled/
-│   │       ├── StyledText.tsx       # Themed text component
-│   │       ├── StyledCard.tsx       # Themed card component
-│   │       └── StyledIcon.tsx       # Themed icon component
 │   └── screens/
-│       ├── HomeScreen.tsx       # Sample home screen
-│       ├── SettingsScreen.tsx   # Sample settings screen
-│       └── ProfileScreen.tsx    # Sample profile screen
+│       ├── SignInScreen.tsx
+│       ├── TokenStoreScreen.tsx
+│       ├── ChatScreen.tsx
+│       └── ...
 └── assets/
-    └── icon.png              # App icon (you need to add this)
+    └── icon.png
 ```
 
 ## Getting Started
