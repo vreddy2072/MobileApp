@@ -196,3 +196,17 @@ create table if not exists public.ai_app_configs (
   constraint ai_app_configs_pkey primary key (app_name, mode),
   constraint ai_app_configs_app_name_fkey foreign KEY (app_name) references apps (app_name)
 )
+
+/**
+INSERT INTO public.ai_app_configs (app_name, mode, system_prompt, model, temperature, max_tokens, max_input_chars, is_active)
+VALUES (
+  '<Your App Name>',
+  'default',
+  'You are <Your App Name>, a personal assistant. Your ONLY job is....',
+  'gpt-4o-mini',
+  0.7,
+  1000,
+  4000,
+  TRUE
+);
+*/
