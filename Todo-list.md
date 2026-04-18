@@ -1,4 +1,7 @@
 Connect app to github
+iOS Connect
+    - create app
+    - create 3 subscription products
 Create app configuration in RevenueCat
     - setup app, copy appid to insert the product into iap_products supabase table
     - setup products, entitlements and offerings
@@ -23,3 +26,14 @@ eas dev updates
     - register the app
     - update eas.json with app id you get from iOS App connect, go to app --> app information --> Apple id
     - add environment variables
+Github
+    - Create repository for the app under broapps
+    - create private.md
+    - create index.md
+iOS Connect
+    - Fill in all the infomation including private etc
+    - create app images
+Builds
+    - start with Expo Go build
+    - create test flight
+    - publish app
