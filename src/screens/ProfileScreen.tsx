@@ -1,5 +1,13 @@
-import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
 import { useTheme } from "../contexts/ThemeContext";
 import { useThemedStyles } from "../hooks/useThemedStyles";
 import { StyledCard } from "../components/styled/StyledCard";
@@ -8,12 +16,16 @@ import { SignOutButton } from "../components/SignOutButton";
 import { useAuthContext } from "../contexts/AuthContext";
 import { spacing, typography, avatarDimensions, iconSizes } from "../constants/designSystem";
 import { useNavigation } from "@react-navigation/native";
+import { getSupabaseClient } from "../../lib/supabase";
+import { deleteUserAccount } from "../services/userAccountService";
+import { useTokenStore } from "../services/tokenService";
 
 export function ProfileScreen() {
   const { theme } = useTheme();
   const styles = useThemedStyles();
   const { session } = useAuthContext();
   const navigation = useNavigation();
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const user = session?.user;
   const emailAddress = user?.email ?? '';
@@ -21,6 +33,60 @@ export function ProfileScreen() {
     (user?.user_metadata?.full_name as string) ??
     (user?.user_metadata?.name as string) ??
     (emailAddress ? 'User' : '');
+
+  const runDeleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      const result = await deleteUserAccount();
+      if (!result.ok) {
+        Alert.alert(
+          'Could not delete account',
+          result.error ?? 'Please try again or contact support.'
+        );
+        return;
+      }
+      const client = getSupabaseClient();
+      if (client) {
+        await client.auth.signOut();
+      }
+      useTokenStore.getState().reset();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'SignIn' as never }],
+      });
+      Alert.alert('Account deleted', 'Your account and app data have been removed.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account, credits, and server-side data for this app. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Are you sure?',
+              'Your account will be deleted.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete account',
+                  style: 'destructive',
+                  onPress: () => void runDeleteAccount(),
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
 
   if (session?.user) {
     return (
@@ -63,6 +129,25 @@ export function ProfileScreen() {
             <View style={localStyles.signOutContainer}>
               <SignOutButton />
             </View>
+          </StyledCard>
+
+          <StyledCard backgroundColor={theme.card} style={{ marginTop: spacing.base }}>
+            <TouchableOpacity
+              onPress={handleDeleteAccount}
+              disabled={deletingAccount}
+              style={[
+                localStyles.deleteAccountButton,
+                deletingAccount && localStyles.deleteAccountButtonDisabled,
+              ]}
+            >
+              {deletingAccount ? (
+                <ActivityIndicator color={theme.error} />
+              ) : (
+                <Text style={[localStyles.deleteAccountText, { color: theme.error }]}>
+                  Delete account
+                </Text>
+              )}
+            </TouchableOpacity>
           </StyledCard>
         </View>
       </ScrollView>
@@ -138,6 +223,24 @@ const localStyles = StyleSheet.create({
   },
   signOutContainer: {
     paddingVertical: spacing.xs,
+  },
+  deleteAccountButton: {
+    paddingVertical: spacing.base,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.35)",
+    backgroundColor: "rgba(239, 68, 68, 0.06)",
+  },
+  deleteAccountButtonDisabled: {
+    opacity: 0.55,
+  },
+  deleteAccountText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
   },
   signedOutContent: {
     flexGrow: 1,

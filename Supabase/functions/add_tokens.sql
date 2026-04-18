@@ -27,16 +27,16 @@ BEGIN
         USING HINT = 'Register the app_name in the public.apps table before using it.';
     END IF;
 
-    -- 2. Look up the quantity (credits) and validate the product is active for this app_name
+    -- 2. Look up credits; NULL is_active is treated as active
     SELECT ip.credits
     INTO v_quantity
     FROM public.iap_products ip
     WHERE 
         ip.app_name = p_app_name 
         AND ip.product_id = p_product_id
-        AND ip.is_active = TRUE; -- Ensures we only transact for active products
+        AND COALESCE(ip.is_active, true) = true;
 
-    -- 3. Check if product was found, is active, and belongs to the app
+    -- 3. Check if product was found and belongs to the app
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Product Invalid: Product ID "%" is inactive or not found for App "%". (404)', p_product_id, p_app_name
         USING HINT = 'Ensure p_product_id is valid and active in iap_products.';

@@ -7,6 +7,7 @@
  * TODO: Update edge function names to match your Supabase edge functions:
  * - 'get-balance-function' → Update to your balance edge function name
  * - 'credit-tokens-from-expogo' → Update to your add tokens edge function name
+ * - 'ai-delete-user-account-function' → Account deletion (see `Supabase/edge-functions/ai-delete-user-account-function.ts`)
  */
 
 import { create } from 'zustand';
@@ -454,9 +455,7 @@ export async function fetchAvailableProducts(): Promise<IAPProduct[]> {
 
     logger.debug('Fetching available IAP products from Supabase');
 
-    const { data, error } = await callEdgeFunction('ai-get-iap-products-function', {
-      app_name: getAppName?.() ?? 'MobileApp',
-    }, accessToken);
+    const { data, error } = await callEdgeFunction('ai-get-iap-products-function', {}, accessToken);
 
     if (error) {
       logger.error('Failed to fetch IAP products', {

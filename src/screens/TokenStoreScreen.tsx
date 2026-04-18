@@ -359,7 +359,7 @@ export function TokenStoreScreen() {
             {/* Disclaimer */}
             <View style={[localStyles.disclaimer, { backgroundColor: theme.border }]}>
               <Text style={[localStyles.disclaimerText, { color: theme.textSecondary }]}>
-                Secure payment via App Store or Google Play. Credits never expire and can be used
+                Secure payment via App Store. Credits never expire and can be used
                 for all premium features.
               </Text>
             </View>
