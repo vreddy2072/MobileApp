@@ -37,3 +37,20 @@ Builds
     - start with Expo Go build
     - create test flight
     - publish app
+App Publishing Prompt
+    - ChatGPT prompt
+i am submitting app in appstore connect. I need the following information, make sure you don't use icons etc that appstore connect doesn't accept. there is also restriction on side:
+
+Promotional Text - Promotional text lets you inform your App Store visitors of any current app features without requiring an updated submission. This text will appear above your description on the App Store for customers with devices running iOS 11 or later, and macOS 10.13 or later.Promotional text lets you inform your App Store visitors of any current app features without requiring an updated submission. This text will appear above your description on the App Store for customers with devices running iOS 11 or later, and macOS 10.13 or later.
+
+Description - A description of your app, detailing features and functionality.
+
+Keywords - Include one or more keywords that describe your app. Keywords make App Store search results more accurate. Separate keywords with an English comma, Chinese comma, or a mix of both.
+
+Notes - Additional information about your app that can help during the review process. Include information that may be needed to test your app, such as app-specific settings.
+
+Subtitle - A summary of your app that will appear under your app’s name on your App Store product page. This can’t be longer than 30 characters.
+
+GitHub Index.md Prompt
+    - Prompt
+i am creating promotional index.md file. Give me the description but with colors and icons. I will place this index.md file in Github.
